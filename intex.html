@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVD Decomposition Calculator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .input-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        input[type="number"] {
+            padding: 8px 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 80px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        #matrixInput {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .result-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .result-box h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+
+        .matrix-display {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.8;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            border-left: 4px solid #ffc107;
+        }
+
+        .highlight strong {
+            color: #856404;
+        }
+
+        #singularValuesPlot, #errorPlot {
+            margin-top: 20px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #f5c6cb;
+        }
+
+        .rank-selector {
+            margin: 15px 0;
+        }
+
+        .rank-selector input[type="range"] {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .info-box {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #bee5eb;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        table td {
+            padding: 8px;
+            text-align: right;
+            border: 1px solid #ddd;
+        }
+
+        .examples {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .example-btn {
+            background: #28a745;
+            font-size: 12px;
+            padding: 8px 15px;
+        }
+
+        .example-btn:hover {
+            background: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔢 SVD Decomposition Calculator</h1>
+        <p class="subtitle">Singular Value Decomposition with Low-Rank Approximation & Eckart-Young Theorem</p>
+
+        <div class="input-section">
+            <h3>Matrix Input</h3>
+            <div class="controls">
+                <label>Rows:</label>
+                <input type="number" id="rows" value="3" min="2" max="10">
+                
+                <label>Columns:</label>
+                <input type="number" id="cols" value="3" min="2" max="10">
+                
+                <button onclick="generateMatrix()">Generate Empty Matrix</button>
+                <button onclick="generateRandomMatrix()">Random Matrix</button>
+                <button onclick="calculateSVD()">Calculate SVD</button>
+            </div>
+
+            <div class="examples">
+                <strong>Examples:</strong>
+                <button class="example-btn" onclick="loadExample(1)">Example 1 (3×3)</button>
+                <button class="example-btn" onclick="loadExample(2)">Example 2 (4×3)</button>
+                <button class="example-btn" onclick="loadExample(3)">Low Rank Example</button>
+            </div>
+
+            <textarea id="matrixInput" placeholder="Enter matrix values (space or comma separated, one row per line)&#10;Example:&#10;1 2 3&#10;4 5 6&#10;7 8 9"></textarea>
+        </div>
+
+        <div id="errorContainer"></div>
+
+        <div id="results" style="display: none;">
+            <div class="result-box">
+                <h3>Original Matrix (A)</h3>
+                <div id="originalMatrix" class="matrix-display"></div>
+            </div>
+
+            <div class="result-box">
+                <h3>Singular Values (Σ)</h3>
+                <div id="singularValues" class="matrix-display"></div>
+                <div class="highlight">
+                    <strong>Condition Number:</strong> <span id="conditionNumber"></span><br>
+                    <strong>Rank:</strong> <span id="matrixRank"></span>
+                </div>
+            </div>
+
+            <div class="result-box" style="grid-column: 1 / -1;">
+                <h3>📊 Normalized Singular Value Decay</h3>
+                <div id="singularValuesPlot"></div>
+            </div>
+
+            <div class="result-box" style="grid-column: 1 / -1;">
+                <h3>🎯 Low-Rank Approximation</h3>
+                <div class="info-box">
+                    <strong>Eckart-Young Theorem:</strong> The best rank-k approximation (in Frobenius norm) 
+                    is obtained by keeping the k largest singular values.
+                </div>
+                
+                <div class="rank-selector">
+                    <label><strong>Select Rank (k):</strong> <span id="rankValue">1</span></label>
+                    <input type="range" id="rankSlider" min="1" max="3" value="1" 
+                           oninput="updateLowRankApprox(this.value)">
+                </div>
+
+                <div id="lowRankMatrix" class="matrix-display"></div>
+                
+                <div class="highlight">
+                    <strong>Approximation Error (Frobenius Norm):</strong> <span id="frobeniusError"></span><br>
+                    <strong>Relative Error:</strong> <span id="relativeError"></span><br>
+                    <strong>Energy Retained:</strong> <span id="energyRetained"></span>
+                </div>
+            </div>
+
+            <div class="result-box" style="grid-column: 1 / -1;">
+                <h3>📉 Error vs Rank</h3>
+                <div id="errorPlot"></div>
+                <div class="highlight">
+                    <strong>Optimal Rank (90% energy):</strong> <span id="optimalRank90"></span><br>
+                    <strong>Optimal Rank (95% energy):</strong> <span id="optimalRank95"></span><br>
+                    <strong>Optimal Rank (99% energy):</strong> <span id="optimalRank99"></span>
+                </div>
+            </div>
+
+            <div class="result-box">
+                <h3>Left Singular Vectors (U)</h3>
+                <div id="uMatrix" class="matrix-display"></div>
+            </div>
+
+            <div class="result-box">
+                <h3>Right Singular Vectors (Vᵀ)</h3>
+                <div id="vtMatrix" class="matrix-display"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentSVD = null;
+        let originalMatrix = null;
+
+        function generateMatrix() {
+            const rows = parseInt(document.getElementById('rows').value);
+            const cols = parseInt(document.getElementById('cols').value);
+            let matrixStr = '';
+            for (let i = 0; i < rows; i++) {
+                matrixStr += Array(cols).fill('0').join(' ') + '\n';
+            }
+            document.getElementById('matrixInput').value = matrixStr.trim();
+        }
+
+        function generateRandomMatrix() {
+            const rows = parseInt(document.getElementById('rows').value);
+            const cols = parseInt(document.getElementById('cols').value);
+            let matrixStr = '';
+            for (let i = 0; i < rows; i++) {
+                const row = [];
+                for (let j = 0; j < cols; j++) {
+                    row.push((Math.random() * 20 - 10).toFixed(2));
+                }
+                matrixStr += row.join(' ') + '\n';
+            }
+            document.getElementById('matrixInput').value = matrixStr.trim();
+        }
+
+        function loadExample(num) {
+            const examples = {
+                1: "1 2 3\n4 5 6\n7 8 9",
+                2: "3 2 2\n2 3 -2\n1 1 1\n0 1 2",
+                3: "2 4 6\n1 2 3\n3 6 9"
+            };
+            document.getElementById('matrixInput').value = examples[num];
+            const rows = examples[num].split('\n').length;
+            const cols = examples[num].split('\n')[0].split(/[\s,]+/).length;
+            document.getElementById('rows').value = rows;
+            document.getElementById('cols').value = cols;
+        }
+
+        function parseMatrix(input) {
+            const lines = input.trim().split('\n');
+            const matrix = lines.map(line => 
+                line.trim().split(/[\s,]+/).map(x => parseFloat(x))
+            );
+            return matrix;
+        }
+
+        function formatMatrix(matrix, precision = 4) {
+            if (!matrix || matrix.length === 0) return '';
+            return '<table>' + matrix.map(row => 
+                '<tr>' + row.map(val => 
+                    `<td>${val.toFixed(precision)}</td>`
+                ).join('') + '</tr>'
+            ).join('') + '</table>';
+        }
+
+        function calculateSVD() {
+            try {
+                const input = document.getElementById('matrixInput').value;
+                originalMatrix = parseMatrix(input);
+                
+                // Validate matrix
+                if (originalMatrix.some(row => row.some(isNaN))) {
+                    throw new Error('Invalid matrix values. Please enter numbers only.');
+                }
+
+                const m = math.matrix(originalMatrix);
+                currentSVD = math.svd(m);
+
+                // Display results
+                document.getElementById('errorContainer').innerHTML = '';
+                document.getElementById('results').style.display = 'block';
+
+                // Original Matrix
+                document.getElementById('originalMatrix').innerHTML = formatMatrix(originalMatrix);
+
+                // Singular Values
+                const singularValues = currentSVD.s;
+                const svArray = Array.isArray(singularValues) ? singularValues : [singularValues];
+                
+                document.getElementById('singularValues').innerHTML = 
+                    svArray.map((s, i) => `σ<sub>${i+1}</sub> = ${s.toFixed(6)}`).join('<br>');
+
+                // Condition Number
+                const conditionNumber = svArray[0] / svArray[svArray.length - 1];
+                document.getElementById('conditionNumber').textContent = 
+                    conditionNumber.toFixed(4);
+
+                // Matrix Rank (count non-zero singular values)
+                const tolerance = 1e-10;
+                const rank = svArray.filter(s => s > tolerance).length;
+                document.getElementById('matrixRank').textContent = rank;
+
+                // Update rank slider
+                const rankSlider = document.getElementById('rankSlider');
+                rankSlider.max = rank;
+                rankSlider.value = 1;
+                updateLowRankApprox(1);
+
+                // Plot normalized singular values
+                plotSingularValues(svArray);
+
+                // Plot error vs rank
+                plotErrorVsRank(svArray);
+
+                // Display U and Vt matrices
+                document.getElementById('uMatrix').innerHTML = 
+                    formatMatrix(currentSVD.U.toArray());
+                document.getElementById('vtMatrix').innerHTML = 
+                    formatMatrix(currentSVD.V.toArray());
+
+            } catch (error) {
+                document.getElementById('errorContainer').innerHTML = 
+                    `<div class="error-message"><strong>Error:</strong> ${error.message}</div>`;
+                document.getElementById('results').style.display = 'none';
+            }
+        }
+
+        function plotSingularValues(singularValues) {
+            const normalized = singularValues.map(s => s / singularValues[0]);
+            
+            const trace1 = {
+                x: Array.from({length: singularValues.length}, (_, i) => i + 1),
+                y: normalized,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Normalized σᵢ',
+                line: {color: '#667eea', width: 3},
+                marker: {size: 10, color: '#764ba2'}
+            };
+
+            const layout = {
+                title: 'Singular Value Decay (Normalized)',
+                xaxis: {title: 'Index (i)', dtick: 1},
+                yaxis: {title: 'σᵢ / σ₁', type: 'log'},
+                hovermode: 'closest'
+            };
+
+            Plotly.newPlot('singularValuesPlot', [trace1], layout, {responsive: true});
+        }
+
+        function plotErrorVsRank(singularValues) {
+            const ranks = Array.from({length: singularValues.length}, (_, i) => i + 1);
+            const errors = ranks.map(k => {
+                const remainingSV = singularValues.slice(k);
+                return Math.sqrt(remainingSV.reduce((sum, s) => sum + s*s, 0));
+            });
+
+            const totalEnergy = Math.sqrt(singularValues.reduce((sum, s) => sum + s*s, 0));
+            const relativeErrors = errors.map(e => (e / totalEnergy * 100));
+
+            const energyRetained = ranks.map(k => {
+                const keptSV = singularValues.slice(0, k);
+                const energy = Math.sqrt(keptSV.reduce((sum, s) => sum + s*s, 0));
+                return (energy / totalEnergy * 100);
+            });
+
+            const trace1 = {
+                x: ranks,
+                y: relativeErrors,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Relative Error (%)',
+                yaxis: 'y',
+                line: {color: '#dc3545', width: 3},
+                marker: {size: 10}
+            };
+
+            const trace2 = {
+                x: ranks,
+                y: energyRetained,
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: 'Energy Retained (%)',
+                yaxis: 'y2',
+                line: {color: '#28a745', width: 3},
+                marker: {size: 10}
+            };
+
+            const layout = {
+                title: 'Approximation Error & Energy vs Rank (Eckart-Young Theorem)',
+                xaxis: {title: 'Rank (k)', dtick: 1},
+                yaxis: {title: 'Relative Error (%)', titlefont: {color: '#dc3545'}},
+                yaxis2: {
+                    title: 'Energy Retained (%)',
+                    titlefont: {color: '#28a745'},
+                    overlaying: 'y',
+                    side: 'right'
+                },
+                hovermode: 'x unified'
+            };
+
+            Plotly.newPlot('errorPlot', [trace1, trace2], layout, {responsive: true});
+
+            // Calculate optimal ranks
+            const optimalRank90 = energyRetained.findIndex(e => e >= 90) + 1;
+            const optimalRank95 = energyRetained.findIndex(e => e >= 95) + 1;
+            const optimalRank99 = energyRetained.findIndex(e => e >= 99) + 1;
+
+            document.getElementById('optimalRank90').textContent = optimalRank90 || 'N/A';
+            document.getElementById('optimalRank95').textContent = optimalRank95 || 'N/A';
+            document.getElementById('optimalRank99').textContent = optimalRank99 || 'N/A';
+        }
+
+        function updateLowRankApprox(k) {
+            k = parseInt(k);
+            document.getElementById('rankValue').textContent = k;
+
+            if (!currentSVD) return;
+
+            // Reconstruct matrix with rank k
+            const U = math.matrix(currentSVD.U);
+            const s = currentSVD.s;
+            const V = math.matrix(currentSVD.V);
+
+            // Create diagonal matrix with only first k singular values
+            const m = U.size()[0];
+            const n = V.size()[0];
+            const Sk = Array(m).fill(0).map(() => Array(n).fill(0));
+            for (let i = 0; i < k; i++) {
+                Sk[i][i] = s[i];
+            }
+
+            // A_k = U * S_k * V^T
+            const Ak = math.multiply(
+                math.multiply(U, Sk),
+                math.transpose(V)
+            );
+
+            document.getElementById('lowRankMatrix').innerHTML = 
+                formatMatrix(Ak.toArray());
+
+            // Calculate error (Frobenius norm)
+            const diff = math.subtract(originalMatrix, Ak);
+            const frobError = math.norm(diff, 'fro');
+            const originalNorm = math.norm(originalMatrix, 'fro');
+            const relError = (frobError / originalNorm * 100);
+
+            // Calculate energy retained
+            const keptEnergy = Math.sqrt(s.slice(0, k).reduce((sum, val) => sum + val*val, 0));
+            const totalEnergy = Math.sqrt(s.reduce((sum, val) => sum + val*val, 0));
+            const energyPercent = (keptEnergy / totalEnergy * 100);
+
+            document.getElementById('frobeniusError').textContent = frobError.toFixed(6);
+            document.getElementById('relativeError').textContent = relError.toFixed(2) + '%';
+            document.getElementById('energyRetained').textContent = energyPercent.toFixed(2) + '%';
+        }
+
+        // Initialize with example
+        window.onload = () => {
+            loadExample(1);
+        };
+    </script>
+</body>
+</html>
