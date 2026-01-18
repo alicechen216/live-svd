@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SVD Decomposition Calculator</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
+    <!-- Using numeric.js which has better SVD support -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
     <style>
         * {
@@ -306,6 +307,37 @@
         let currentSVD = null;
         let originalMatrix = null;
 
+        // Matrix operations helper functions
+        function transpose(matrix) {
+            return matrix[0].map((_, i) => matrix.map(row => row[i]));
+        }
+
+        function matrixMultiply(A, B) {
+            const result = Array(A.length).fill(0).map(() => Array(B[0].length).fill(0));
+            for (let i = 0; i < A.length; i++) {
+                for (let j = 0; j < B[0].length; j++) {
+                    for (let k = 0; k < B.length; k++) {
+                        result[i][j] += A[i][k] * B[k][j];
+                    }
+                }
+            }
+            return result;
+        }
+
+        function matrixSubtract(A, B) {
+            return A.map((row, i) => row.map((val, j) => val - B[i][j]));
+        }
+
+        function frobeniusNorm(matrix) {
+            let sum = 0;
+            for (let i = 0; i < matrix.length; i++) {
+                for (let j = 0; j < matrix[0].length; j++) {
+                    sum += matrix[i][j] * matrix[i][j];
+                }
+            }
+            return Math.sqrt(sum);
+        }
+
         function generateMatrix() {
             const rows = parseInt(document.getElementById('rows').value);
             const cols = parseInt(document.getElementById('cols').value);
@@ -370,8 +402,14 @@
                     throw new Error('Invalid matrix values. Please enter numbers only.');
                 }
 
-                const m = math.matrix(originalMatrix);
-                currentSVD = math.svd(m);
+                // Use numeric.js SVD
+                const svdResult = numeric.svd(originalMatrix);
+                
+                currentSVD = {
+                    U: svdResult.U,
+                    S: svdResult.S,  // Array of singular values
+                    V: svdResult.V
+                };
 
                 // Display results
                 document.getElementById('errorContainer').innerHTML = '';
@@ -381,20 +419,20 @@
                 document.getElementById('originalMatrix').innerHTML = formatMatrix(originalMatrix);
 
                 // Singular Values
-                const singularValues = currentSVD.s;
-                const svArray = Array.isArray(singularValues) ? singularValues : [singularValues];
+                const singularValues = currentSVD.S;
                 
                 document.getElementById('singularValues').innerHTML = 
-                    svArray.map((s, i) => `σ<sub>${i+1}</sub> = ${s.toFixed(6)}`).join('<br>');
+                    singularValues.map((s, i) => `σ<sub>${i+1}</sub> = ${s.toFixed(6)}`).join('<br>');
 
                 // Condition Number
-                const conditionNumber = svArray[0] / svArray[svArray.length - 1];
+                const nonZeroSV = singularValues.filter(s => s > 1e-10);
+                const conditionNumber = nonZeroSV[0] / nonZeroSV[nonZeroSV.length - 1];
                 document.getElementById('conditionNumber').textContent = 
                     conditionNumber.toFixed(4);
 
                 // Matrix Rank (count non-zero singular values)
                 const tolerance = 1e-10;
-                const rank = svArray.filter(s => s > tolerance).length;
+                const rank = singularValues.filter(s => s > tolerance).length;
                 document.getElementById('matrixRank').textContent = rank;
 
                 // Update rank slider
@@ -404,21 +442,22 @@
                 updateLowRankApprox(1);
 
                 // Plot normalized singular values
-                plotSingularValues(svArray);
+                plotSingularValues(singularValues);
 
                 // Plot error vs rank
-                plotErrorVsRank(svArray);
+                plotErrorVsRank(singularValues);
 
-                // Display U and Vt matrices
+                // Display U and V matrices
                 document.getElementById('uMatrix').innerHTML = 
-                    formatMatrix(currentSVD.U.toArray());
+                    formatMatrix(currentSVD.U);
                 document.getElementById('vtMatrix').innerHTML = 
-                    formatMatrix(currentSVD.V.toArray());
+                    formatMatrix(transpose(currentSVD.V));
 
             } catch (error) {
                 document.getElementById('errorContainer').innerHTML = 
                     `<div class="error-message"><strong>Error:</strong> ${error.message}</div>`;
                 document.getElementById('results').style.display = 'none';
+                console.error(error);
             }
         }
 
@@ -514,42 +553,45 @@
 
             if (!currentSVD) return;
 
-            // Reconstruct matrix with rank k
-            const U = math.matrix(currentSVD.U);
-            const s = currentSVD.s;
-            const V = math.matrix(currentSVD.V);
+            try {
+                const U = currentSVD.U;
+                const S = currentSVD.S;
+                const V = currentSVD.V;
 
-            // Create diagonal matrix with only first k singular values
-            const m = U.size()[0];
-            const n = V.size()[0];
-            const Sk = Array(m).fill(0).map(() => Array(n).fill(0));
-            for (let i = 0; i < k; i++) {
-                Sk[i][i] = s[i];
+                const m = U.length;
+                const n = V.length;
+
+                // Truncate to rank k
+                const Uk = U.map(row => row.slice(0, k));
+                const Sk = S.slice(0, k);
+                const Vk = V.map(row => row.slice(0, k));
+
+                // Reconstruct: A_k = U_k * diag(S_k) * V_k^T
+                const Sk_diag = Uk.map((row, i) => row.map((val, j) => val * Sk[j]));
+                const Ak = matrixMultiply(Sk_diag, transpose(Vk));
+
+                document.getElementById('lowRankMatrix').innerHTML = formatMatrix(Ak);
+
+                // Calculate error
+                const diff = matrixSubtract(originalMatrix, Ak);
+                const frobError = frobeniusNorm(diff);
+                const originalNorm = frobeniusNorm(originalMatrix);
+                const relError = (frobError / originalNorm * 100);
+
+                // Calculate energy retained
+                const keptEnergy = Math.sqrt(Sk.reduce((sum, val) => sum + val*val, 0));
+                const totalEnergy = Math.sqrt(S.reduce((sum, val) => sum + val*val, 0));
+                const energyPercent = (keptEnergy / totalEnergy * 100);
+
+                document.getElementById('frobeniusError').textContent = frobError.toFixed(6);
+                document.getElementById('relativeError').textContent = relError.toFixed(2) + '%';
+                document.getElementById('energyRetained').textContent = energyPercent.toFixed(2) + '%';
+
+            } catch (error) {
+                console.error('Error in low-rank approximation:', error);
+                document.getElementById('lowRankMatrix').innerHTML = 
+                    '<div class="error-message">Error calculating approximation</div>';
             }
-
-            // A_k = U * S_k * V^T
-            const Ak = math.multiply(
-                math.multiply(U, Sk),
-                math.transpose(V)
-            );
-
-            document.getElementById('lowRankMatrix').innerHTML = 
-                formatMatrix(Ak.toArray());
-
-            // Calculate error (Frobenius norm)
-            const diff = math.subtract(originalMatrix, Ak);
-            const frobError = math.norm(diff, 'fro');
-            const originalNorm = math.norm(originalMatrix, 'fro');
-            const relError = (frobError / originalNorm * 100);
-
-            // Calculate energy retained
-            const keptEnergy = Math.sqrt(s.slice(0, k).reduce((sum, val) => sum + val*val, 0));
-            const totalEnergy = Math.sqrt(s.reduce((sum, val) => sum + val*val, 0));
-            const energyPercent = (keptEnergy / totalEnergy * 100);
-
-            document.getElementById('frobeniusError').textContent = frobError.toFixed(6);
-            document.getElementById('relativeError').textContent = relError.toFixed(2) + '%';
-            document.getElementById('energyRetained').textContent = energyPercent.toFixed(2) + '%';
         }
 
         // Initialize with example
